@@ -17,9 +17,9 @@ type Batcher struct {
 	store          map[string]pkg.Order // TODO: replace with redis to make this service stateless
 	mu             sync.RWMutex
 	sendCh         chan pkg.Order
-	SFTP           sftp.SFTP
 	downloadTicker *time.Ticker
 	doneCh         chan struct{}
+	sftp.SFTP
 }
 
 func NewBatcher(batchSize int, downloadTicker *time.Ticker, sftp sftp.SFTP) (*Batcher, chan struct{}) {
@@ -68,9 +68,10 @@ func (b *Batcher) put(order pkg.Order) {
 }
 
 func (b *Batcher) drain() {
-	for key, order := range b.store {
+	defer b.mu.RUnlock()
+	b.mu.RLock()
+	for _, order := range b.store {
 		b.sendCh <- order
-		delete(b.store, key)
 	}
 }
 
@@ -136,7 +137,7 @@ func (b *Batcher) GetLatest() {
 				log.Printf("Error downloading orders to SFTP: %v", err)
 			}
 
-			//TODO: check states, send emails to users
+			//TODO: check states, send emails to users, delete entry from in memory store/update status OrderStatePlaced
 		case <-b.doneCh:
 			return
 		}
