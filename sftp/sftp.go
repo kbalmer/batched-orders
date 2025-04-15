@@ -1,10 +1,8 @@
 package sftp
 
-import "batched-orders/pkg"
-
 type SFTP interface {
-	Upload(orders []pkg.Order) error
-	Download(orders []pkg.Order) error
+	Upload(data []byte) error
+	Download(ids []string) ([]byte, error)
 }
 
 type Client struct {
@@ -14,10 +12,10 @@ func NewSFTPClient() SFTP {
 	return &Client{}
 }
 
-func (s *Client) Upload(orders []pkg.Order) error {
+func (s *Client) Upload(data []byte) error {
 	return nil
 }
 
-func (s *Client) Download(orders []pkg.Order) error {
-	return nil
+func (s *Client) Download(ids []string) ([]byte, error) {
+	return nil, nil
 }

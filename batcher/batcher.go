@@ -1,6 +1,7 @@
 package batcher
 
 import (
+	"encoding/json"
 	"log"
 	"strconv"
 	"sync"
@@ -55,7 +56,7 @@ func (b *Batcher) BatchListener() {
 	}
 }
 
-func generateKey(order pkg.Order) string {
+func getKey(order pkg.Order) string {
 	return strconv.FormatInt(order.Timestamp.UnixMilli(), 0) + "_" + strconv.FormatInt(order.Customer.CustomerNumber, 0)
 }
 
@@ -63,7 +64,7 @@ func (b *Batcher) put(order pkg.Order) {
 	defer b.mu.Unlock()
 	b.mu.Lock()
 
-	b.store[generateKey(order)] = order
+	b.store[getKey(order)] = order
 }
 
 func (b *Batcher) drain() {
@@ -101,12 +102,19 @@ func (b *Batcher) Send() {
 				ordersToUpload = append(ordersToUpload, order)
 			}
 
-			if err := b.SFTP.Upload(ordersToUpload); err != nil {
+			uploadData, err := json.Marshal(ordersToUpload)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			if err := b.SFTP.Upload(uploadData); err != nil {
 				log.Printf("Error uploading orders to SFTP: %v", err)
 			}
 
+			// mark orders as sent
 			for _, orderToBeUpdate := range ordersToUpload {
-				b.updateOrderState(generateKey(orderToBeUpdate), pkg.OrderStateSent)
+				b.updateOrderState(getKey(orderToBeUpdate), pkg.OrderStateSent)
 			}
 		}
 	}
@@ -116,16 +124,19 @@ func (b *Batcher) GetLatest() {
 	for {
 		select {
 		case <-b.downloadTicker.C:
-			var ordersToBeDownloaded []pkg.Order
+			var orderIDsToBeDownloaded []string
 			for _, order := range b.store {
 				if order.State == pkg.OrderStateSent {
-					ordersToBeDownloaded = append(ordersToBeDownloaded, order)
+					orderIDsToBeDownloaded = append(orderIDsToBeDownloaded, getKey(order))
 				}
 			}
-			if err := b.SFTP.Download(ordersToBeDownloaded); err != nil {
+
+			_, err := b.SFTP.Download(orderIDsToBeDownloaded)
+			if err != nil {
 				log.Printf("Error downloading orders to SFTP: %v", err)
 			}
 
+			//TODO: check states, send emails to users
 		case <-b.doneCh:
 			return
 		}
